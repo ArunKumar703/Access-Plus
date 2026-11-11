@@ -1,0 +1,247 @@
+<!DOCTYPE html>
+<html lang="te">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Universal Multi-Modal AI Tester</title>
+    <!-- టెయిల్‌విండ్ CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-gray-100 h-screen flex flex-col justify-between max-w-3xl mx-auto p-2 sm:p-4">
+
+    <!-- హెడర్ & డైనమిక్ కాన్ఫిగరేషన్ సెక్షన్ -->
+    <header class="bg-white shadow-md rounded-xl p-3 mb-3 flex flex-col gap-3">
+        <h1 class="text-lg font-bold text-gray-800">మల్టీ-మోడల్ AI టెస్టర్ (Gemini & Others)</h1>
+        
+        <div class="grid grid-cols-1 sm:grid-cols-3 gap-2">
+            <!-- ఏపీఐ రకం ఎంచుకోవడానికి (Dropdown) -->
+            <div>
+                <label class="block text-xs font-semibold text-gray-600 mb-1">ఏపీఐ రకం:</label>
+                <select id="apiType" onchange="toggleApiFields()" class="border border-gray-300 rounded-lg px-3 py-1.5 text-xs w-full focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white">
+                    <option value="gemini">Google Gemini</option>
+                    <option value="others">Others (OpenAI / DeepSeek / etc.)</option>
+                </select>
+            </div>
+
+            <!-- API Key (రెంట్ రెండింటికీ కామన్) -->
+            <div>
+                <label class="block text-xs font-semibold text-gray-600 mb-1">API Key:</label>
+                <input type="password" id="apiKeyInput" placeholder="మీ API Key ఇక్కడ ఇవ్వండి" class="border border-gray-300 rounded-lg px-3 py-1.5 text-xs w-full focus:outline-none focus:ring-2 focus:ring-blue-500">
+            </div>
+
+            <!-- Model Name / Endpoint (డైనమిక్ గా మారుతుంది) -->
+            <div>
+                <label id="dynamicLabel" class="block text-xs font-semibold text-gray-600 mb-1">Model Name:</label>
+                <input type="text" id="modelOrUrlInput" value="gemini-2.5-flash" class="border border-gray-300 rounded-lg px-3 py-1.5 text-xs w-full focus:outline-none focus:ring-2 focus:ring-blue-500" placeholder="ఉదా: gemini-2.5-flash">
+            </div>
+        </div>
+        <p id="helperText" class="text-[11px] text-gray-500">గమనిక: గూగుల్ జెమినీ కోసం కేవలం మోడల్ పేరు (ఉదా: gemini-2.5-flash) మాత్రమే ఇవ్వండి.</p>
+    </header>
+
+    <!-- చాట్ మెసేజ్ బాక్స్ -->
+    <div id="chatContainer" class="flex-1 bg-white shadow-inner rounded-xl p-4 overflow-y-auto space-y-4 mb-3 flex flex-col">
+        <div class="self-start bg-gray-200 text-gray-800 p-3 rounded-xl max-w-[80%] text-sm">
+            నమస్తే! టెక్స్ట్ తో పాటు ఇమేజ్, ఆడియో, వీడియో లేదా డాక్యుమెంట్‌లను అటాచ్ చేసి మీ ఏపీఐని టెస్ట్ చేయవచ్చు.
+        </div>
+    </div>
+
+    <!-- ఫైల్ ప్రివ్యూ బాక్స్ -->
+    <div id="filePreviewContainer" class="hidden bg-white p-2 rounded-lg shadow mb-2 flex items-center justify-between border border-blue-200">
+        <div class="flex items-center space-x-2">
+            <span id="fileIcon" class="text-xl">📎</span>
+            <span id="fileName" class="text-xs text-gray-600 truncate max-w-xs"></span>
+        </div>
+        <button onclick="removeFile()" class="text-red-500 hover:text-red-700 text-sm font-bold px-2">✕</button>
+    </div>
+
+    <!-- ఇన్పుట్ మరియు సెండ్ బటన్ ఫారమ్ -->
+    <div class="bg-white shadow-md rounded-xl p-3 flex items-center space-x-2">
+        <!-- మల్టీ-మీడియా ఫైల్ అప్‌లోడ్ బటన్ (ఇమేజ్, ఆడియో, వీడియో, డాక్యుమెంట్) -->
+        <label for="mediaInput" class="cursor-pointer bg-gray-100 hover:bg-gray-200 p-2.5 rounded-xl text-gray-600 transition flex items-center justify-center text-lg" title="ఫైల్ అప్‌లోడ్ చేయండి">
+            ➕
+        </label>
+        <input type="file" id="mediaInput" accept="image/*,audio/*,video/*,application/pdf,text/plain" class="hidden" onchange="handleFileSelect(event)">
+
+        <!-- టెక్స్ట్ ఇన్పుట్ ఫీల్డ్ -->
+        <input type="text" id="userInput" placeholder="మీ సందేశాన్ని ఇక్కడ రాయండి..." class="flex-1 border border-gray-300 rounded-lg px-4 py-2.5 focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm" onkeypress="handleKeyPress(event)">
+
+        <!-- సెండ్ బటన్ -->
+        <button id="sendBtn" onclick="sendMessage()" class="bg-blue-600 hover:bg-blue-700 text-white font-semibold px-5 py-2.5 rounded-lg transition duration-200 text-sm flex items-center justify-center">
+            పంపు
+        </button>
+    </div>
+
+    <script>
+        let selectedFileBase64 = null;
+        let selectedMimeType = null;
+        let selectedFileName = null;
+
+        // డ్రాప్‌డౌన్ మార్చినప్పుడు ఫీల్డ్స్ మారడానికి
+        function toggleApiFields() {
+            const apiType = document.getElementById('apiType').value;
+            const dynamicLabel = document.getElementById('dynamicLabel');
+            const modelOrUrlInput = document.getElementById('modelOrUrlInput');
+            const helperText = document.getElementById('helperText');
+
+            if (apiType === 'gemini') {
+                dynamicLabel.innerText = "Model Name:";
+                modelOrUrlInput.value = "gemini-2.5-flash";
+                modelOrUrlInput.placeholder = "ఉదా: gemini-2.5-flash";
+                helperText.innerText = "గమనిక: గూగుల్ జెమినీ కోసం కేవలం మోడల్ పేరు మాత్రమే ఇవ్వండి (URL అవసరం లేదు).";
+            } else {
+                dynamicLabel.innerText = "Endpoint URL:";
+                modelOrUrlInput.value = "https://api.openai.com/v1/chat/completions";
+                modelOrUrlInput.placeholder = "https://api.openai.com/v1/chat/completions";
+                helperText.innerText = "గమనిక: ఇక్కడ పూర్తి ఎండ్‌పాయింట్ URL ఇవ్వండి.";
+            }
+        }
+
+        // ఫైల్ సెలెక్ట్ చేసుకున్నప్పుడు (ఇమేజ్, ఆడియో, వీడియో, డాక్యుమెంట్)
+        function handleFileSelect(event) {
+            const file = event.target.files[0];
+            if (file) {
+                selectedMimeType = file.type;
+                selectedFileName = file.name;
+                const reader = new FileReader();
+                reader.onload = function(e) {
+                    selectedFileBase64 = e.target.result.split(',')[1];
+                    document.getElementById('fileName').innerText = file.name;
+                    document.getElementById('filePreviewContainer').classList.remove('hidden');
+                };
+                reader.readAsDataURL(file);
+            }
+        }
+
+        // ఫైల్ తొలగించడానికి
+        function removeFile() {
+            selectedFileBase64 = null;
+            selectedMimeType = null;
+            selectedFileName = null;
+            document.getElementById('mediaInput').value = '';
+            document.getElementById('filePreviewContainer').classList.add('hidden');
+        }
+
+        function handleKeyPress(event) {
+            if (event.key === 'Enter') {
+                sendMessage();
+            }
+        }
+
+        // మెసేజ్ మరియు ఫైల్ పంపే ఫంక్షన్
+        async function sendMessage() {
+            const apiType = document.getElementById('apiType').value;
+            const apiKeyInput = document.getElementById('apiKeyInput').value.trim();
+            const modelOrUrl = document.getElementById('modelOrUrlInput').value.trim();
+            const inputField = document.getElementById('userInput');
+            const chatContainer = document.getElementById('chatContainer');
+            
+            const textPrompt = inputField.value.trim();
+
+            if (!apiKeyInput) {
+                alert("దయచేసి API Key ని ఎంటర్ చేయండి!");
+                return;
+            }
+            if (!modelOrUrl) {
+                alert("దయచేసి మోడల్ పేరు లేదా URL ని ఎంటర్ చేయండి!");
+                return;
+            }
+            if (!textPrompt && !selectedFileBase64) return;
+
+            // యూజర్ మెసేజ్ మరియు అటాచ్ మెంట్ స్క్రీన్ పై చూపించడం
+            let userHtml = `<div class="self-end bg-blue-600 text-white p-3 rounded-xl max-w-[80%] text-sm space-y-2">`;
+            if (selectedFileBase64) {
+                if (selectedMimeType.startsWith('image/')) {
+                    userHtml += `<img src="data:${selectedMimeType};base64,${selectedFileBase64}" class="rounded-lg max-h-40 w-auto">`;
+                } else {
+                    userHtml += `<div class="bg-blue-700 p-2 rounded text-xs">📄 ${escapeHtml(selectedFileName)}</div>`;
+                }
+            }
+            if (textPrompt) {
+                userHtml += `<div>${escapeHtml(textPrompt)}</div>`;
+            }
+            userHtml += `</div>`;
+            chatContainer.innerHTML += userHtml;
+
+            const currentText = textPrompt;
+            const currentFile = selectedFileBase64;
+            const currentMime = selectedMimeType;
+
+            inputField.value = '';
+            removeFile();
+            chatContainer.scrollTop = chatContainer.scrollHeight;
+
+            // లోడింగ్ మెసేజ్
+            const loadingId = 'loading-' + Date.now();
+            chatContainer.innerHTML += `<div id="${loadingId}" class="self-start bg-gray-200 text-gray-600 p-3 rounded-xl text-sm italic">రిక్వెస్ట్ వెళుతోంది...</div>`;
+            chatContainer.scrollTop = chatContainer.scrollHeight;
+
+            let finalUrl = "";
+            let requestHeaders = { 'Content-Type': 'application/json' };
+            let requestBody = {};
+
+            if (apiType === 'gemini') {
+                // గూగుల్ జెమినీ కోసం ఆటోమేటిక్ URL (యూజర్ URL అడగదు)
+                finalUrl = `https://generativelanguage.googleapis.com/v1beta/models/${modelOrUrl}:generateContent?key=${apiKeyInput}`;
+                
+                let partsArray = [];
+                if (currentText) {
+                    partsArray.push({ text: currentText });
+                }
+                if (currentFile) {
+                    partsArray.push({
+                        inline_data: {
+                            mime_type: currentMime,
+                            data: currentFile
+                        }
+                    });
+                }
+                requestBody = { contents: [{ parts: partsArray }] };
+            } else {
+                // ఇతర ఏపీఐల కోసం యూజర్ ఇచ్చిన URL వాడబడుతుంది
+                finalUrl = modelOrUrl;
+                requestHeaders['Authorization'] = 'Bearer ' + apiKeyInput;
+                requestBody = {
+                    model: "gpt-4o-mini", // అవసరమైతే మార్చుకోవచ్చు
+                    messages: [{ role: "user", content: currentText }]
+                };
+            }
+
+            try {
+                const response = await fetch(finalUrl, {
+                    method: 'POST',
+                    headers: requestHeaders,
+                    body: JSON.stringify(requestBody)
+                });
+
+                const data = await response.json();
+                document.getElementById(loadingId).remove();
+
+                if (response.ok) {
+                    let aiReply = "";
+                    if (apiType === 'gemini') {
+                        aiReply = data.candidates[0].content.parts[0].text;
+                    } else {
+                        aiReply = data.choices[0].message.content;
+                    }
+
+                    chatContainer.innerHTML += `<div class="self-start bg-gray-200 text-gray-800 p-3 rounded-xl max-w-[80%] text-sm whitespace-pre-wrap"><b>సక్సెస్:</b><br>${escapeHtml(aiReply)}</div>`;
+                } else {
+                    const errorMsg = data.error?.message || JSON.stringify(data);
+                    chatContainer.innerHTML += `<div class="self-start bg-red-100 text-red-600 p-3 rounded-xl max-w-[80%] text-sm"><b>ఏపీఐ లోపం:</b> ${escapeHtml(errorMsg)}</div>`;
+                }
+            } catch (error) {
+                document.getElementById(loadingId).remove();
+                chatContainer.innerHTML += `<div class="self-start bg-red-100 text-red-600 p-3 rounded-xl max-w-[80%] text-sm">కనెక్షన్ విఫలమైంది: ${escapeHtml(error.message)}</div>`;
+            }
+
+            chatContainer.scrollTop = chatContainer.scrollHeight;
+        }
+
+        function escapeHtml(text) {
+            const map = { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#039;' };
+            return text.replace(/[&<>"']/g, function(m) { return map[m]; });
+        }
+    </script>
+</body>
+</html>
+
